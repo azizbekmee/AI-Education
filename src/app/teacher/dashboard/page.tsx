@@ -147,6 +147,15 @@ export default async function TeacherDashboard() {
                 <p className="mt-4 border-t border-white/10 pt-4 text-sm leading-relaxed text-white/60">
                   {mainReport.feedback}
                 </p>
+                {mainReport.insight && (
+                  <div className="mt-4 rounded-2xl border border-violet-400/20 bg-violet-500/[0.06] p-4">
+                    <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-violet-300">
+                      <BrainCircuit className="h-3.5 w-3.5" />
+                      Shaxsiylashtirish tahlili
+                    </p>
+                    <p className="mt-2 text-sm leading-relaxed text-white/70">{mainReport.insight}</p>
+                  </div>
+                )}
                 <div className="mt-4 flex flex-wrap gap-2">
                   <span className="chip border-white/10 bg-white/5 text-white/60">
                     O&apos;rganish usuli: {mainStudent.learning_style || "—"}

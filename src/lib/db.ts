@@ -69,6 +69,17 @@ CREATE TABLE IF NOT EXISTS notifications (
 );
 `);
 
+// Schema additions for the personalization engine (safe on existing databases)
+const addColumn = (table: string, column: string, definition: string) => {
+  try {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  } catch {
+    /* column already exists */
+  }
+};
+addColumn("sessions", "today_interest", "TEXT NOT NULL DEFAULT ''");
+addColumn("reports", "insight", "TEXT NOT NULL DEFAULT ''");
+
 const userCount = (db.prepare("SELECT COUNT(*) AS c FROM users").get() as { c: number }).c;
 if (userCount === 0) {
   const insertUser = db.prepare(

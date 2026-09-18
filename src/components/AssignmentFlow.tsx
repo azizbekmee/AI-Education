@@ -12,20 +12,30 @@ import {
   ArrowRight,
   ArrowLeft,
   BrainCircuit,
+  Wand2,
 } from "lucide-react";
 import Backdrop from "@/components/Backdrop";
 import Header from "@/components/Header";
 import MasteryRing from "@/components/MasteryRing";
-import type { ReportData, SafeQuestion, StudentProfile } from "@/types";
+import ActivityInput from "@/components/activities/ActivityInput";
+import type {
+  AnswerPayload,
+  ReportData,
+  SafeActivity,
+  SafeExperience,
+  StudentProfile,
+} from "@/types";
 
-type StartData = {
-  sessionId: number;
-  assignment: { id: number; title: string };
-  profile: StudentProfile;
-  nextIndex: number;
-  doneCount: number;
-  mastery: number;
-  resumed: boolean;
+type StartResponse = {
+  needsInterest?: boolean;
+  profile?: StudentProfile;
+  sessionId?: number;
+  experience?: SafeExperience;
+  nextIndex?: number;
+  doneCount?: number;
+  mastery?: number;
+  todayInterest?: string;
+  resumed?: boolean;
 };
 
 type Msg = { id: number; kind: "ai" | "user" | "success" | "warn" | "reveal"; text: string };
@@ -33,47 +43,38 @@ type Msg = { id: number; kind: "ai" | "user" | "success" | "warn" | "reveal"; te
 type AnswerResponse = {
   correct: boolean;
   revealed?: boolean;
-  message?: string;
-  question?: SafeQuestion;
-  correctText?: string;
+  message?: string | null;
+  route?: string;
+  activity?: SafeActivity;
+  solution?: string;
   mastery: number;
   nextIndex: number | null;
   completed: boolean;
 };
 
-const SUCCESS_LINES = [
-  "Zo'r! Aynan shunday.",
-  "To'g'ri! Rivojlanib borasan.",
-  "Barakalla, juda yaxshi!",
-];
-
-const STYLE_INTRO: Record<string, string> = {
-  Viktorina: "Sen viktorina orqali yaxshiroq o'rganishingni bilamiz.",
-  "Hikoyali o'qish": "Sen hikoyalar orqali yaxshiroq o'rganishingni bilamiz.",
-  "Amaliy mashqlar": "Sen amaliy mashqlar orqali yaxshiroq o'rganishingni bilamiz.",
-  "Vizual diagrammalar": "Sen vizual materiallar orqali yaxshiroq o'rganishingni bilamiz.",
-};
-
 export default function AssignmentFlow({
   name,
   assignmentId,
+  profile,
 }: {
   name: string;
   assignmentId: number;
+  profile: StudentProfile;
 }) {
   const router = useRouter();
-  const [phase, setPhase] = useState<"loading" | "intro" | "chat" | "finish">("loading");
-  const [start, setStart] = useState<StartData | null>(null);
+  const [phase, setPhase] = useState<"loading" | "interest" | "intro" | "chat" | "finish">("loading");
+  const [sessionId, setSessionId] = useState<number | null>(null);
+  const [experience, setExperience] = useState<SafeExperience | null>(null);
+  const [todayInterest, setTodayInterest] = useState("");
   const [messages, setMessages] = useState<Msg[]>([]);
-  const [question, setQuestion] = useState<SafeQuestion | null>(null);
-  const [questionIndex, setQuestionIndex] = useState(0);
+  const [activity, setActivity] = useState<SafeActivity | null>(null);
+  const [activityIndex, setActivityIndex] = useState(0);
   const [doneCount, setDoneCount] = useState(0);
-  const [total, setTotal] = useState(5);
   const [mastery, setMastery] = useState(0);
-  const [selected, setSelected] = useState<number | null>(null);
   const [awaiting, setAwaiting] = useState(false);
   const [attemptNo, setAttemptNo] = useState(1);
   const [report, setReport] = useState<(ReportData & { id: number }) | null>(null);
+  const [customInterest, setCustomInterest] = useState("");
   const msgId = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -81,24 +82,37 @@ export default function AssignmentFlow({
     requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }));
   }, []);
 
-  const push = useCallback(
-    (kind: Msg["kind"], text: string) => {
-      msgId.current += 1;
-      setMessages((prev) => [...prev, { id: msgId.current, kind, text }]);
-    },
-    []
-  );
+  const push = useCallback((kind: Msg["kind"], text: string) => {
+    msgId.current += 1;
+    setMessages((prev) => [...prev, { id: msgId.current, kind, text }]);
+  }, []);
 
-  const showQuestion = useCallback(
-    (q: SafeQuestion, index: number) => {
-      setQuestion(q);
-      setQuestionIndex(index);
-      setSelected(null);
-      push("ai", q.text);
+  const showActivity = useCallback(
+    (a: SafeActivity, index: number) => {
+      setActivity(a);
+      setActivityIndex(index);
+      push("ai", (a.title ? `${a.title}. ` : "") + a.prompt);
       scrollDown();
     },
     [push, scrollDown]
   );
+
+  function hydrate(data: StartResponse) {
+    if (!data.sessionId || !data.experience) return false;
+    setSessionId(data.sessionId);
+    setExperience(data.experience);
+    setTodayInterest(data.todayInterest ?? "");
+    setDoneCount(data.doneCount ?? 0);
+    setMastery(data.mastery ?? 0);
+    if (data.resumed && (data.doneCount ?? 0) > 0) {
+      setPhase("chat");
+      const a = data.experience.activities[data.nextIndex ?? 0];
+      if (a) showActivity(a, data.nextIndex ?? 0);
+    } else {
+      setPhase("intro");
+    }
+    return true;
+  }
 
   useEffect(() => {
     fetch("/api/assignments/start", {
@@ -106,36 +120,47 @@ export default function AssignmentFlow({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ assignmentId }),
     })
-      .then(async (res) => {
-        if (!res.ok) {
-          router.push("/student/dashboard");
-          return null;
-        }
-        return (await res.json()) as StartData & { questions: SafeQuestion[] };
-      })
+      .then(async (res) => (res.ok ? ((await res.json()) as StartResponse) : null))
       .then((data) => {
-        if (!data) return;
-        setStart(data);
-        setDoneCount(data.doneCount);
-        setMastery(data.mastery);
-        setTotal(data.questions.length);
-        if (data.resumed && data.doneCount > 0) {
-          setPhase("chat");
-          const q = data.questions[data.nextIndex];
-          if (q) showQuestion(q, data.nextIndex);
-        } else {
-          setPhase("intro");
+        if (!data) {
+          router.push("/student/dashboard");
+          return;
+        }
+        if (data.needsInterest) {
+          setPhase("interest");
+        } else if (!hydrate(data)) {
+          router.push("/student/dashboard");
         }
       })
       .catch(() => router.push("/student/dashboard"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assignmentId]);
 
+  async function beginWithInterest(interest: string) {
+    setPhase("loading");
+    try {
+      const res = await fetch("/api/assignments/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assignmentId, todayInterest: interest }),
+      });
+      const data = (await res.json()) as StartResponse;
+      if (!res.ok || !hydrate(data)) {
+        router.push("/student/dashboard");
+        return;
+      }
+      setPhase("intro");
+    } catch {
+      router.push("/student/dashboard");
+    }
+  }
+
   function begin() {
-    if (!start) return;
+    if (!experience) return;
     setPhase("chat");
-    const q = (start as StartData & { questions: SafeQuestion[] }).questions[start.nextIndex];
-    if (q) showQuestion(q, start.nextIndex);
+    push("ai", experience.intro);
+    const a = experience.activities[0];
+    if (a) showActivity(a, 0);
   }
 
   async function finish() {
@@ -144,7 +169,7 @@ export default function AssignmentFlow({
       const res = await fetch("/api/sessions/finish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: start!.sessionId }),
+        body: JSON.stringify({ sessionId }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -158,22 +183,25 @@ export default function AssignmentFlow({
     router.push("/student/dashboard");
   }
 
-  async function answer(optionIndex: number) {
-    if (!question || !start || awaiting) return;
-    setSelected(optionIndex);
+  async function answer(payload: AnswerPayload) {
+    if (!activity || !sessionId || awaiting) return;
     setAwaiting(true);
-    push("user", question.options[optionIndex]);
+    const display =
+      payload.kind === "choice"
+        ? (activity.options?.[payload.index ?? -1] ?? "")
+        : payload.kind === "numeric"
+          ? (payload.value ?? "")
+          : payload.kind === "ordering"
+            ? (payload.order ?? []).join(" → ")
+            : (payload.text ?? "");
+    push("user", display);
     scrollDown();
 
     try {
       const res = await fetch("/api/sessions/answer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId: start.sessionId,
-          questionIndex,
-          answerIndex: optionIndex,
-        }),
+        body: JSON.stringify({ sessionId, activityIndex, answer: payload }),
       });
       if (!res.ok) {
         router.push("/student/dashboard");
@@ -183,40 +211,41 @@ export default function AssignmentFlow({
       setMastery(data.mastery);
 
       if (data.correct) {
-        push("success", SUCCESS_LINES[(attemptNo + questionIndex) % SUCCESS_LINES.length]);
+        push("success", data.message || SUCCESS_LINES[(attemptNo + activityIndex) % SUCCESS_LINES.length]);
         setDoneCount((c) => c + 1);
         setAttemptNo(1);
-        setQuestion(null);
-        if (data.completed) {
+        setActivity(null);
+        if (data.completed || data.nextIndex === null) {
           await finish();
         } else {
-          const next = (start as StartData & { questions: SafeQuestion[] }).questions[data.nextIndex!];
-          if (next) showQuestion(next, data.nextIndex!);
+          const next = experience!.activities[data.nextIndex];
+          if (next) showActivity(next, data.nextIndex);
         }
       } else if (data.revealed) {
         push(
           "reveal",
-          `Bu savolda qiyinlashdik. To'g'ri javob: ${data.correctText}. Yaqinda shu mavzuga yana qaytamiz!`
+          `Bu qadamda qiyinlashdik. To'g'ri yechim: ${data.solution}. Yaqinda shu tushunchaga yana qaytamiz!`
         );
         setDoneCount((c) => c + 1);
         setAttemptNo(1);
-        setQuestion(null);
-        if (data.completed) {
+        setActivity(null);
+        if (data.completed || data.nextIndex === null) {
           await finish();
         } else {
-          const next = (start as StartData & { questions: SafeQuestion[] }).questions[data.nextIndex!];
-          if (next) showQuestion(next, data.nextIndex!);
+          const next = experience!.activities[data.nextIndex];
+          if (next) showActivity(next, data.nextIndex);
         }
       } else {
-        push("warn", data.message ?? "Keling, shu tushunchani boshqa usulda sinab ko'ramiz.");
+        push("warn", data.message || "Keling, shu tushunchani boshqa usulda sinab ko'ramiz.");
         setAttemptNo((n) => n + 1);
-        setQuestion(null);
-        if (data.question) {
-          const updated = { ...(start as StartData & { questions: SafeQuestion[] }) };
-          updated.questions = [...updated.questions];
-          updated.questions[questionIndex] = data.question;
-          setStart(updated);
-          showQuestion(data.question, questionIndex);
+        setActivity(null);
+        if (data.activity) {
+          const updated: SafeExperience = {
+            ...experience!,
+            activities: experience!.activities.map((a, i) => (i === activityIndex ? data.activity! : a)),
+          };
+          setExperience(updated);
+          showActivity(data.activity, activityIndex);
         }
       }
     } catch {
@@ -236,26 +265,27 @@ export default function AssignmentFlow({
           transition={{ scale: { duration: 0.5 }, rotate: { repeat: Infinity, duration: 2.2, ease: "easeInOut" } }}
           className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-cyan-400 shadow-2xl shadow-violet-500/40"
         >
-          <Sparkles className="h-8 w-8 text-white" />
+          <Wand2 className="h-8 w-8 text-white" />
         </motion.div>
         <p className="mt-6 font-display text-lg font-semibold text-white">
-          AI senga mos topshiriq tayyorlayapti...
+          AI senga maxsus o&apos;rganish tajribasi loyihalashyapti...
         </p>
-        <p className="mt-2 text-sm text-white/40">Bir necha soniya kuting.</p>
+        <p className="mt-2 text-sm text-white/40">Ssenariy, qadamlar va qiziqarli vazifalar tayyorlanmoqda.</p>
       </div>
     );
   }
 
-  if (phase === "intro") {
+  /* ---- Step 0: today's interest ---- */
+  if (phase === "interest") {
     return (
       <div className="relative flex min-h-screen flex-col">
         <Backdrop />
         <Header name={name} role="student" />
         <div className="relative z-10 mx-auto flex w-full max-w-xl flex-1 flex-col justify-center px-6 pb-16">
           <motion.div
-            initial={{ opacity: 0, y: 32 }}
+            initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
           >
             <motion.div
               animate={{ rotate: [0, 6, -6, 0] }}
@@ -264,58 +294,59 @@ export default function AssignmentFlow({
             >
               <Sparkles className="h-8 w-8 text-white" />
             </motion.div>
+            <h1 className="mt-6 font-display text-2xl font-bold text-white sm:text-3xl">
+              Salom, {name}!
+            </h1>
+            <p className="mt-3 text-lg text-white/70">
+              Bugun topshiriqni nimaga bog&apos;lab o&apos;rganishni xohlaysan?
+            </p>
 
-            <div className="mt-6 space-y-2.5">
-              <motion.p
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className="font-display text-2xl font-bold text-white"
-              >
-                Salom, {start?.profile.name}!
-              </motion.p>
-              <motion.p
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.35 }}
-                className="text-white/60"
-              >
-                {STYLE_INTRO[start?.profile.learningStyle ?? "Viktorina"]}
-              </motion.p>
-              <motion.p
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.5 }}
-                className="text-white/60"
-              >
-                Bugungi topshiriq — «{start?.assignment.title}» sening qiziqishlaringga
-                ({start?.profile.interests.join(", ")}) moslashtirildi.
-              </motion.p>
-              <motion.p
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.65 }}
-                className="text-white/40"
-              >
-                Agar savol qiyin bo&apos;lsa, AI ustozing senga boshqa usulda yordam beradi.
-                To&apos;g&apos;ri javobni hech qachon darhol bermaymiz — birga topamiz!
-              </motion.p>
+            <div className="mt-6 flex flex-wrap gap-2.5">
+              {profile.interests.map((i) => (
+                <motion.button
+                  key={i}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => beginWithInterest(i)}
+                  className="chip border-white/10 bg-white/[0.04] px-4 py-2.5 text-white/80 transition hover:border-violet-400/40 hover:bg-violet-500/10 hover:text-white"
+                >
+                  {i}
+                </motion.button>
+              ))}
             </div>
 
-            <motion.button
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.8 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={begin}
-              className="btn-gradient mt-8 w-full text-lg"
-            >
-              Boshlash
-              <ArrowRight className="h-5 w-5" />
-            </motion.button>
+            <div className="card mt-6 p-5">
+              <p className="text-sm font-medium text-white/60">
+                Yoki o&apos;z qiziqishingni yoz — istalgan narsa bo&apos;lishi mumkin:
+              </p>
+              <div className="mt-3 flex gap-2.5">
+                <input
+                  value={customInterest}
+                  onChange={(e) => setCustomInterest(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && customInterest.trim() && beginWithInterest(customInterest.trim())}
+                  placeholder="Masalan: Men kosmosga qiziqaman..."
+                  className="input-field flex-1"
+                />
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => customInterest.trim() && beginWithInterest(customInterest.trim())}
+                  disabled={!customInterest.trim()}
+                  className="btn-gradient shrink-0 px-4 py-3"
+                >
+                  <ArrowRight className="h-4.5 w-4.5" />
+                </motion.button>
+              </div>
+              <button
+                onClick={() => beginWithInterest("")}
+                className="mt-4 text-sm text-white/40 transition hover:text-white/70"
+              >
+                Bugun farqi yo&apos;q — AI eng mosini tanlasin
+              </button>
+            </div>
+
             <button
               onClick={() => router.push("/student/dashboard")}
-              className="mt-4 flex w-full items-center justify-center gap-1.5 text-sm text-white/40 transition hover:text-white/70"
+              className="mt-8 flex items-center justify-center gap-1.5 text-sm text-white/40 transition hover:text-white/70"
             >
               <ArrowLeft className="h-4 w-4" />
               Dashboardga qaytish
@@ -326,6 +357,7 @@ export default function AssignmentFlow({
     );
   }
 
+  /* ---- Finish ---- */
   if (phase === "finish" && report) {
     return (
       <div className="relative min-h-screen">
@@ -349,7 +381,9 @@ export default function AssignmentFlow({
             <h1 className="mt-5 font-display text-3xl font-bold text-white">
               O&apos;quv mashg&apos;uloti yakunlandi
             </h1>
-            <p className="mt-2 text-white/50">{start?.assignment.title}</p>
+            <p className="mt-2 text-white/50">
+              {experience?.icon} {experience?.title}
+            </p>
           </motion.div>
 
           <motion.div
@@ -414,7 +448,9 @@ export default function AssignmentFlow({
             transition={{ delay: 0.7 }}
             className="mt-6 text-center"
           >
-            <p className="text-sm text-white/40">Hisobot o&apos;qituvchingizga yuborildi.</p>
+            <p className="text-sm text-white/40">
+              Sening o&apos;rganish tajribang haqidagi tahlil o&apos;qituvchingga yuborildi.
+            </p>
             <button onClick={() => router.push("/student/dashboard")} className="btn-gradient mt-4 w-full">
               Dashboardga qaytish
               <ArrowRight className="h-5 w-5" />
@@ -425,7 +461,65 @@ export default function AssignmentFlow({
     );
   }
 
-  // chat phase
+  /* ---- Intro ---- */
+  if (phase === "intro" && experience) {
+    return (
+      <div className="relative flex min-h-screen flex-col">
+        <Backdrop />
+        <Header name={name} role="student" />
+        <div className="relative z-10 mx-auto flex w-full max-w-xl flex-1 flex-col justify-center px-6 pb-16">
+          <motion.div
+            initial={{ opacity: 0, y: 32 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <motion.div
+              animate={{ rotate: [0, 6, -6, 0] }}
+              transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
+              className="flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-violet-500 to-cyan-400 shadow-2xl shadow-violet-500/40 text-4xl"
+            >
+              {experience.icon}
+            </motion.div>
+
+            <span className="chip mt-6 border-violet-400/30 bg-violet-500/10 text-violet-200">
+              <Wand2 className="h-3.5 w-3.5" />
+              {experience.typeLabel}
+            </span>
+            <h1 className="mt-3 font-display text-3xl font-bold tracking-tight text-white">
+              {experience.title}
+            </h1>
+            <p className="mt-4 whitespace-pre-line leading-relaxed text-white/70">{experience.intro}</p>
+            {todayInterest && (
+              <p className="mt-3 text-sm text-cyan-200/70">
+                Bugungi tanloving: <b>{todayInterest}</b> — tajriba aynan shunga moslashtirildi.
+              </p>
+            )}
+
+            <motion.button
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.5 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={begin}
+              className="btn-gradient mt-8 w-full text-lg"
+            >
+              Kettik!
+              <ArrowRight className="h-5 w-5" />
+            </motion.button>
+            <button
+              onClick={() => router.push("/student/dashboard")}
+              className="mt-4 flex w-full items-center justify-center gap-1.5 text-sm text-white/40 transition hover:text-white/70"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Dashboardga qaytish
+            </button>
+          </motion.div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ---- Chat / activity flow ---- */
   const bubbleStyle: Record<Msg["kind"], string> = {
     ai: "border-white/10 bg-white/[0.06] text-white/85",
     user: "ml-auto bg-gradient-to-r from-violet-500 to-indigo-500 text-white border-transparent",
@@ -439,17 +533,16 @@ export default function AssignmentFlow({
       <Backdrop />
       <Header name={name} role="student" />
 
-      {/* Progress bar */}
       <div className="relative z-10 mx-auto w-full max-w-2xl px-6">
         <div className="card flex items-center justify-between gap-4 px-6 py-4">
           <div>
             <p className="font-display text-lg font-bold text-white">
-              {Math.min(doneCount + 1, total)} / {total}-savol
+              {Math.min(doneCount + 1, experience?.activities.length ?? 5)} / {experience?.activities.length ?? 5}-qadam
             </p>
             <div className="mt-1.5 h-1.5 w-40 overflow-hidden rounded-full bg-white/10">
               <motion.div
                 className="h-full rounded-full bg-gradient-to-r from-violet-500 to-cyan-400"
-                animate={{ width: `${(doneCount / total) * 100}%` }}
+                animate={{ width: `${(doneCount / (experience?.activities.length ?? 5)) * 100}%` }}
                 transition={{ duration: 0.6, ease: "easeOut" }}
               />
             </div>
@@ -468,7 +561,6 @@ export default function AssignmentFlow({
         </div>
       </div>
 
-      {/* Chat */}
       <div className="relative z-10 mx-auto w-full max-w-2xl flex-1 px-6 pb-10">
         <div className="mt-5 space-y-3">
           {messages.map((m) => (
@@ -503,7 +595,7 @@ export default function AssignmentFlow({
                 </span>
               )}
               <div
-                className={`max-w-[85%] rounded-2xl border px-4 py-3 leading-relaxed ${bubbleStyle[m.kind]}`}
+                className={`max-w-[85%] whitespace-pre-line rounded-2xl border px-4 py-3 leading-relaxed ${bubbleStyle[m.kind]}`}
               >
                 {m.text}
               </div>
@@ -530,42 +622,17 @@ export default function AssignmentFlow({
           <div ref={bottomRef} />
         </div>
 
-        {/* Options */}
         <AnimatePresence mode="wait">
-          {question && !awaiting && (
+          {activity && !awaiting && (
             <motion.div
-              key={question.id}
+              key={activity.id}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -12 }}
               transition={{ duration: 0.4 }}
-              className="mt-5 space-y-2.5"
+              className="mt-5"
             >
-              <p className="text-xs font-semibold uppercase tracking-wider text-white/30">
-                Javobingni tanla
-              </p>
-              {question.options.map((opt, i) => (
-                <motion.button
-                  key={`${question.id}-${i}`}
-                  initial={{ opacity: 0, x: -14 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.07 }}
-                  whileHover={{ scale: 1.015, x: 4 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => answer(i)}
-                  disabled={selected !== null}
-                  className={`flex w-full items-center gap-3 rounded-2xl border px-5 py-4 text-left transition-colors ${
-                    selected === i
-                      ? "border-violet-400/50 bg-violet-500/15 text-white"
-                      : "border-white/10 bg-white/[0.03] text-white/80 hover:border-violet-400/40 hover:bg-violet-500/10 hover:text-white"
-                  }`}
-                >
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/10 font-display text-sm font-bold text-violet-200">
-                    {String.fromCharCode(65 + i)}
-                  </span>
-                  {opt}
-                </motion.button>
-              ))}
+              <ActivityInput activity={activity} disabled={awaiting} onAnswer={answer} />
             </motion.div>
           )}
         </AnimatePresence>
@@ -573,3 +640,9 @@ export default function AssignmentFlow({
     </div>
   );
 }
+
+const SUCCESS_LINES = [
+  "Zo'r! Aynan shunday.",
+  "To'g'ri! Rivojlanib borasan.",
+  "Barakalla, juda yaxshi!",
+];

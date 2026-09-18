@@ -1,10 +1,11 @@
-import type { Question } from "@/types";
+import type { Experience } from "@/types";
 
 /**
- * Gemini as secondary validator: checks generated questions.
- * Returns null when no API key is set (validator skipped) or on any failure.
+ * Gemini as optional secondary validator: checks that AI-designed activities
+ * are academically valid. Returns null when no API key is set (skipped) or on
+ * any failure — in that case the experience is used as-is.
  */
-export async function validateQuestions(questions: Question[]): Promise<string[] | null> {
+export async function validateExperience(experience: Experience): Promise<string[] | null> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) return null;
   const model = process.env.GEMINI_MODEL || "gemini-2.0-flash";
@@ -19,16 +20,15 @@ export async function validateQuestions(questions: Question[]): Promise<string[]
             {
               parts: [
                 {
-                  text: `Siz ta'lim testlari validatorisan. Har bir savolni tekshir: to'g'ri javob matematik jihatdan haqiqatan to'g'rimi, faqat bitta to'g'ri variant bormi, savol o'zbek tilida ravsanmi.
-FAQAT quyidagi JSON formatini qaytar:
-{"invalidIds":["..."]}
+                  text: `Siz ta'lim tajribalari validatorisan. Har bir qadamni tekshir: to'g'ri javob haqiqatan to'g'rimi, faqat bitta aniq javob bormi, savol o'zbek tilida ravsanmi.
+FAQAT quyidagi JSON formatini qaytar: {"invalidIds":["..."]}
 Hammasi joyida bo'lsa: {"invalidIds":[]}
 
-Savollar:
-${questions
+Qadamlar:
+${experience.activities
   .map(
-    (q, i) =>
-      `${i + 1}. id=${q.id} ${q.text} Variantlar: ${q.options.join(" | ")}. To'g'ri: ${q.options[q.correctIndex]}`
+    (a) =>
+      `id=${a.id} kind=${a.kind} savol=${a.prompt} to'g'ri javob=${a.solution}${a.options ? ` variantlar=${a.options.join(" | ")}` : ""}`
   )
   .join("\n")}`,
                 },

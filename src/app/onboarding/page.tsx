@@ -17,6 +17,8 @@ import {
   BookOpenText,
   Wrench,
   BarChart3,
+  Plus,
+  X,
 } from "lucide-react";
 import Backdrop from "@/components/Backdrop";
 
@@ -41,6 +43,8 @@ export default function OnboardingPage() {
   const [name, setName] = useState("");
   const [interests, setInterests] = useState<string[]>(["Futbol", "O'yinlar", "Texnologiya"]);
   const [style, setStyle] = useState("Viktorina");
+  const [customInterest, setCustomInterest] = useState("");
+  const [customStyle, setCustomStyle] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [checking, setChecking] = useState(true);
@@ -65,6 +69,13 @@ export default function OnboardingPage() {
     setInterests((prev) =>
       prev.includes(name) ? prev.filter((i) => i !== name) : [...prev, name]
     );
+  }
+
+  function addCustomInterest() {
+    const v = customInterest.trim();
+    if (!v) return;
+    if (!interests.includes(v)) setInterests((prev) => [...prev, v]);
+    setCustomInterest("");
   }
 
   async function save() {
@@ -132,6 +143,9 @@ export default function OnboardingPage() {
           <p className="text-sm font-semibold uppercase tracking-wider text-white/40">
             1-qadam · Nimalar sizni qiziqtiradi?
           </p>
+          <p className="mt-2 text-xs text-white/30">
+            Bu faqat misollar — istalgan qiziqishingizni yozib qo&apos;shishingiz mumkin.
+          </p>
           <div className="mt-4 flex flex-wrap gap-2.5">
             {INTERESTS.map(({ name, icon: Icon }) => {
               const active = interests.includes(name);
@@ -154,6 +168,38 @@ export default function OnboardingPage() {
                 </motion.button>
               );
             })}
+            {interests
+              .filter((i) => !INTERESTS.some((f) => f.name === i))
+              .map((i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => toggleInterest(i)}
+                  className="chip border-violet-400/50 bg-gradient-to-r from-violet-500/25 to-cyan-500/20 px-4 py-2.5 text-white shadow-lg shadow-violet-500/20"
+                >
+                  {i}
+                  <X className="h-3.5 w-3.5 text-cyan-300" />
+                </button>
+              ))}
+          </div>
+          <div className="mt-4 flex gap-2.5">
+            <input
+              type="text"
+              value={customInterest}
+              onChange={(e) => setCustomInterest(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && addCustomInterest()}
+              placeholder="O'zingiz qiziqtirgan boshqa mavzuni yozing — masalan: avtomobillar, kosmos, arxitektura..."
+              className="input-field flex-1"
+            />
+            <motion.button
+              type="button"
+              whileTap={{ scale: 0.97 }}
+              onClick={addCustomInterest}
+              disabled={!customInterest.trim()}
+              className="btn-gradient shrink-0 px-4 py-3"
+            >
+              <Plus className="h-4.5 w-4.5" />
+            </motion.button>
           </div>
         </motion.div>
 
@@ -197,6 +243,40 @@ export default function OnboardingPage() {
                 </motion.button>
               );
             })}
+          </div>
+          <div className="mt-4">
+            <p className="text-xs text-white/30">
+              Yoki o&apos;z usulingizni yozing — masalan: &quot;mustaqil izlanmoqchiman&quot;,
+              &quot;amalda sinab ko&apos;rishni xohlayman&quot;...
+            </p>
+            <div className="mt-2.5 flex gap-2.5">
+              <input
+                type="text"
+                value={customStyle}
+                onChange={(e) => setCustomStyle(e.target.value)}
+                placeholder="O'z usulingizni yozing..."
+                className="input-field flex-1"
+              />
+              <motion.button
+                type="button"
+                whileTap={{ scale: 0.97 }}
+                onClick={() => customStyle.trim() && setStyle(customStyle.trim())}
+                disabled={!customStyle.trim()}
+                className={`shrink-0 rounded-xl border px-4 text-sm font-medium transition ${
+                  style && !STYLES.some((s) => s.name === style)
+                    ? "border-violet-400/50 bg-violet-500/20 text-white"
+                    : "border-white/10 bg-white/[0.03] text-white/60 hover:border-violet-400/40 hover:text-white"
+                }`}
+              >
+                <Plus className="h-4.5 w-4.5" />
+              </motion.button>
+            </div>
+            {style && !STYLES.some((s) => s.name === style) && (
+              <p className="mt-2.5 flex items-center gap-1.5 text-sm text-violet-200">
+                <Check className="h-4 w-4 text-cyan-300" />
+                Tanlangan usul: {style}
+              </p>
+            )}
           </div>
         </motion.div>
 
