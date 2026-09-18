@@ -1,26 +1,56 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-space), ui-sans-serif, system-ui, sans-serif;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: #07070c;
+  color: #f4f4f8;
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+::selection {
+  background: rgba(139, 92, 246, 0.4);
+}
+
+.card {
+  @apply rounded-3xl border border-white/10 bg-white/[0.04] backdrop-blur-xl;
+}
+
+.btn-gradient {
+  @apply relative inline-flex items-center justify-center gap-2 rounded-2xl px-6 py-3.5 font-semibold text-white transition-transform duration-200;
+  background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 50%, #22d3ee 100%);
+  background-size: 150% 150%;
+}
+
+.btn-gradient:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px -8px rgba(139, 92, 246, 0.55);
+  background-position: 100% 100%;
+}
+
+.btn-gradient:active {
+  transform: translateY(0);
+}
+
+.btn-gradient:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.chip {
+  @apply inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium;
+}
+
+.input-field {
+  @apply w-full rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-3 text-white placeholder-white/30 outline-none transition;
+}
+
+.input-field:focus {
+  border-color: rgba(139, 92, 246, 0.6);
+  box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.15);
 }
