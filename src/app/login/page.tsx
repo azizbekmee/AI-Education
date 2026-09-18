@@ -29,7 +29,13 @@ export default function LoginPage() {
         setError(data.error || "Kirish amalga oshmadi. Qaytadan urinib ko'ring.");
         return;
       }
-      router.push(data.profileCompleted ? (data.role === "teacher" ? "/teacher" : "/student") : "/onboarding");
+      const target = data.profileCompleted
+        ? data.role === "teacher"
+          ? "/teacher/dashboard"
+          : "/student/dashboard"
+        : "/onboarding";
+      router.replace(target);
+      router.refresh();
     } catch {
       setError("Server bilan bog'lanishda xatolik. Qaytadan urinib ko'ring.");
     } finally {

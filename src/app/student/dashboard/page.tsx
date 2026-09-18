@@ -9,6 +9,8 @@ import Backdrop from "@/components/Backdrop";
 import MasteryRing from "@/components/MasteryRing";
 import type { AssignmentRow, ReportRow, SessionRow } from "@/types";
 
+export const dynamic = "force-dynamic";
+
 export default async function StudentDashboard() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");

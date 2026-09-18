@@ -10,7 +10,8 @@ export default function Header({ name, role }: { name: string; role: "teacher" |
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
-    router.push("/login");
+    router.replace("/login");
+    router.refresh();
   }
 
   return (

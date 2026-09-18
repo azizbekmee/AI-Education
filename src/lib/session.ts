@@ -13,6 +13,7 @@ function sign(payload: string) {
 
 export async function setSessionCookie(userId: number) {
   const store = await cookies();
+  store.delete(COOKIE_NAME);
   const payload = String(userId);
   store.set(COOKIE_NAME, `${payload}.${sign(payload)}`, {
     httpOnly: true,

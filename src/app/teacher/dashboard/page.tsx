@@ -19,6 +19,8 @@ import MasteryRing from "@/components/MasteryRing";
 import NotificationsBell from "@/components/NotificationsBell";
 import type { AssignmentRow, ReportRow, SessionRow, UserRow } from "@/types";
 
+export const dynamic = "force-dynamic";
+
 export default async function TeacherDashboard() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
