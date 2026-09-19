@@ -31,6 +31,53 @@ export async function callClaude(system: string, user: string, maxTokens = 4000)
     .join("\n");
 }
 
+export type AiFileBlock =
+  | { kind: "pdf"; name: string; base64: string }
+  | { kind: "image"; name: string; mediaType: string; base64: string }
+  | { kind: "text"; name: string; text: string };
+
+/** Claude call where the uploaded files themselves are part of the message (PDF/image/text blocks). */
+export async function callClaudeWithFiles(
+  system: string,
+  user: string,
+  files: AiFileBlock[],
+  maxTokens = 8000
+): Promise<string> {
+  const client = getClient();
+  const blocks: Anthropic.ContentBlockParam[] = [];
+  for (const f of files) {
+    if (f.kind === "pdf") {
+      blocks.push({
+        type: "document",
+        source: { type: "base64", media_type: "application/pdf", data: f.base64 },
+        title: f.name,
+      });
+    } else if (f.kind === "image") {
+      blocks.push({
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: f.mediaType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+          data: f.base64,
+        },
+      });
+    } else {
+      blocks.push({ type: "text", text: `— ${f.name} —\n${f.text}` });
+    }
+  }
+  blocks.push({ type: "text", text: user });
+  const res = await client.messages.create({
+    model: getModel(),
+    max_tokens: maxTokens,
+    system,
+    messages: [{ role: "user", content: blocks }],
+  });
+  return res.content
+    .filter((b): b is Anthropic.TextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join("\n");
+}
+
 export function extractJson(text: string): unknown {
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");

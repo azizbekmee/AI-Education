@@ -1,15 +1,46 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Sparkles, Play, PencilLine, Target, BrainCircuit, Trophy, Clock3 } from "lucide-react";
+import {
+  Play,
+  PencilLine,
+  BrainCircuit,
+  Trophy,
+  Clock3,
+  CalendarDays,
+  FileText,
+  ChevronRight,
+  GraduationCap,
+} from "lucide-react";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { parseJsonArray } from "@/lib/helpers";
+import { getClassLessons, todayDow, WEEKDAYS_UZ } from "@/lib/teacher-context";
 import Header from "@/components/Header";
 import Backdrop from "@/components/Backdrop";
 import MasteryRing from "@/components/MasteryRing";
-import type { AssignmentRow, ReportRow, SessionRow } from "@/types";
+import { StatusBadge, type AssignmentStatus } from "@/components/StatusBadge";
+import type { AssignmentRow, ClassRow, ReportRow, SessionRow } from "@/types";
 
 export const dynamic = "force-dynamic";
+
+interface ClassAssignment extends AssignmentRow {
+  subject_name: string | null;
+  topic_name: string | null;
+  teacher_name: string;
+}
+
+function formatDeadline(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const now = new Date();
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  if (sameDay) return "Bugun";
+  return `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`;
+}
 
 export default async function StudentDashboard() {
   const user = await getCurrentUser();
@@ -18,10 +49,16 @@ export default async function StudentDashboard() {
   if (!user.profile_completed) redirect("/onboarding");
 
   const interests = parseJsonArray(user.interests, [] as string[]);
-  const assignments = db.prepare("SELECT * FROM assignments ORDER BY id DESC").all() as AssignmentRow[];
-  const sessions = db.prepare("SELECT * FROM sessions WHERE student_id = ?").all(user.id) as SessionRow[];
-  const latestReport = db.prepare("SELECT * FROM reports WHERE student_id = ? ORDER BY id DESC LIMIT 1").get(user.id) as ReportRow | undefined;
+  const dow = todayDow();
+  const firstName = user.name.split(" ")[0];
 
+  const cls = user.class_id
+    ? ((db.prepare("SELECT * FROM classes WHERE id = ?").get(user.class_id) as ClassRow | undefined) ?? null)
+    : null;
+
+  const todayLessons = cls ? getClassLessons(cls.id, dow) : [];
+
+  const sessions = db.prepare("SELECT * FROM sessions WHERE student_id = ?").all(user.id) as SessionRow[];
   const sessionByAssignment = new Map<number, SessionRow>();
   for (const s of sessions) {
     if (!sessionByAssignment.has(s.assignment_id) || sessionByAssignment.get(s.assignment_id)!.id < s.id) {
@@ -29,16 +66,47 @@ export default async function StudentDashboard() {
     }
   }
 
-  const today = assignments[0];
-  const todaySession = today ? sessionByAssignment.get(today.id) : undefined;
+  // Only the student's own class — assignments from other classes never leak here
+  const assignments = cls
+    ? (db
+        .prepare(
+          `SELECT a.*, s.name AS subject_name, t.name AS topic_name, u.name AS teacher_name
+           FROM assignments a
+           JOIN users u ON u.id = a.teacher_id
+           LEFT JOIN subjects s ON s.id = a.subject_id
+           LEFT JOIN topics t ON t.id = a.topic_id
+           WHERE a.class_id = ?
+           ORDER BY (a.deadline IS NULL), a.deadline, a.id DESC`
+        )
+        .all(cls.id) as ClassAssignment[])
+    : [];
 
-  function sessionLabel(status: SessionRow["status"] | undefined) {
-    if (!status) return { text: "Boshlash", icon: Play };
-    if (status === "active") return { text: "Davom ettirish", icon: Clock3 };
-    return { text: "Qayta bajarish", icon: Play };
+  // subject → first not-yet-completed assignment (links today's lessons to homework)
+  const openBySubject = new Map<number, ClassAssignment>();
+  for (const a of assignments) {
+    if (a.subject_id == null) continue;
+    if (sessionByAssignment.get(a.id)?.status === "completed") continue;
+    if (!openBySubject.has(a.subject_id)) openBySubject.set(a.subject_id, a);
   }
 
-  const { text: btnText, icon: BtnIcon } = sessionLabel(todaySession?.status);
+  const latestReport = db
+    .prepare("SELECT * FROM reports WHERE student_id = ? ORDER BY id DESC LIMIT 1")
+    .get(user.id) as ReportRow | undefined;
+
+  function statusInfo(a: ClassAssignment): {
+    status: AssignmentStatus;
+    action: string;
+    icon: typeof Play;
+  } {
+    const st = sessionByAssignment.get(a.id)?.status;
+    if (!st) {
+      return { status: "not_started", action: "Boshlash", icon: Play };
+    }
+    if (st === "active") {
+      return { status: "in_progress", action: "Davom ettirish", icon: Clock3 };
+    }
+    return { status: "completed", action: "To'liq ko'rish", icon: FileText };
+  }
 
   return (
     <div className="relative min-h-screen">
@@ -48,49 +116,79 @@ export default async function StudentDashboard() {
       <main className="relative z-10 mx-auto max-w-5xl px-6 pb-20 sm:px-10">
         <div className="mt-4">
           <h1 className="font-display text-3xl font-bold tracking-tight text-white sm:text-4xl">
-            Salom, {user.name}!
+            Salom, {firstName}! 👋
           </h1>
-          <p className="mt-2 text-white/50">
-            AI ustozing bugun senga maxsus topshiriq tayyorladi.
-          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            {cls ? (
+              <span className="chip border-violet-400/30 bg-violet-500/10 text-base font-semibold text-violet-200">
+                <GraduationCap className="h-4 w-4" />
+                {cls.name} sinfi | O&apos;quvchi
+              </span>
+            ) : (
+              <span className="chip border-white/10 bg-white/5 text-white/50">Sinf biriktirilmagan</span>
+            )}
+            <p className="text-sm text-white/50">{WEEKDAYS_UZ[dow]} — bugungi kun tartibi va topshiriqlaringiz.</p>
+          </div>
         </div>
 
         <div className="mt-8 grid gap-5 lg:grid-cols-5">
-          {/* Bugungi topshiriq */}
-          <div className="card relative overflow-hidden p-7 lg:col-span-3">
-            <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-violet-500/20 blur-3xl" />
-            <div className="relative">
-              <div className="flex items-center gap-2">
-                <Target className="h-4 w-4 text-violet-300" />
-                <span className="text-sm font-semibold uppercase tracking-wider text-white/40">
-                  Bugungi topshiriq
-                </span>
-              </div>
-
-              {today ? (
-                <>
-                  <h2 className="mt-3 font-display text-2xl font-bold text-white">{today.title}</h2>
-                  <span className="chip mt-3 border-violet-400/30 bg-violet-500/10 text-violet-200">
-                    <Sparkles className="h-3.5 w-3.5" />
-                    Bu topshiriq senga moslashtirildi
-                  </span>
-                  <div className="mt-6 flex items-center gap-4">
-                    <Link href={`/student/assignment?assignmentId=${today.id}`} className="btn-gradient">
-                      <BtnIcon className="h-4.5 w-4.5" />
-                      {btnText}
-                    </Link>
-                    {todaySession?.status === "completed" && (
-                      <span className="text-sm text-white/50">
-                        O&apos;zlashtirish: <b className="text-cyan-300">{Math.round(todaySession.mastery)}%</b>
-                      </span>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <p className="mt-4 text-white/40">
-                  Hozircha topshiriq yo&apos;q. O&apos;qituvching yangi topshiriq yaratishi kutilmoqda.
+          {/* Bugungi darslar */}
+          <div className="card p-7 lg:col-span-3">
+            <div className="flex items-center justify-between">
+              <p className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-white/40">
+                <CalendarDays className="h-4 w-4 text-violet-300" />
+                Bugungi darslaringiz
+              </p>
+              {cls && <span className="chip border-white/10 bg-white/5 text-white/50">{cls.name}</span>}
+            </div>
+            <div className="mt-4 space-y-3">
+              {todayLessons.length === 0 && (
+                <p className="text-sm text-white/40">
+                  {dow === 7
+                    ? "Bugun yakshanba — darslar yo'q."
+                    : "Bugun sening darsingiz yo'q."}
                 </p>
               )}
+              {todayLessons.map((l) => {
+                const linked = l.subjectId != null ? openBySubject.get(l.subjectId) : undefined;
+                const body = (
+                  <>
+                    <div className="flex h-11 w-16 shrink-0 flex-col items-center justify-center rounded-xl bg-gradient-to-br from-violet-500/20 to-cyan-500/10">
+                      <span className="text-[11px] font-semibold text-white/70">{l.startTime}</span>
+                      <span className="text-[10px] text-white/40">{l.endTime}</span>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-white">
+                        {l.lessonNumber}-dars <span className="text-white/30">·</span>{" "}
+                        <span className="text-white/80">{l.subjectName}</span>
+                      </p>
+                      <p className="text-xs text-white/40">
+                        {l.teacherName ? `${l.teacherName} ustoz` : "O'qituvchi aniqlanmagan"}
+                      </p>
+                    </div>
+                    {linked && (
+                      <span className="chip border-amber-400/30 bg-amber-500/10 text-amber-200">
+                        Topshiriq mavjud
+                      </span>
+                    )}
+                  </>
+                );
+                const cardCls =
+                  "flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4";
+                return linked ? (
+                  <Link
+                    key={l.timetableId}
+                    href={`/student/assignment?assignmentId=${linked.id}`}
+                    className={`${cardCls} transition hover:border-violet-400/40 hover:bg-violet-500/[0.06]`}
+                  >
+                    {body}
+                  </Link>
+                ) : (
+                  <div key={l.timetableId} className={cardCls}>
+                    {body}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -129,6 +227,57 @@ export default async function StudentDashboard() {
           </div>
         </div>
 
+        {/* Bugungi topshiriqlar */}
+        <div className="card mt-5 p-7">
+          <div className="flex items-center justify-between">
+            <p className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-white/40">
+              <FileText className="h-4 w-4 text-amber-300" />
+              Bugungi topshiriqlar
+            </p>
+            {assignments.length > 0 && (
+              <span className="chip border-white/10 bg-white/5 text-white/50">{assignments.length} ta</span>
+            )}
+          </div>
+          <div className="mt-4 space-y-3">
+            {assignments.length === 0 && (
+              <p className="text-sm text-white/40">
+                Bugun bajarilishi kerak bo&apos;lgan yangi topshiriq yo&apos;q.
+              </p>
+            )}
+            {assignments.map((a) => {
+              const { status, action, icon: ActionIcon } = statusInfo(a);
+              const dl = formatDeadline(a.deadline);
+              return (
+                <Link
+                  key={a.id}
+                  href={`/student/assignment?assignmentId=${a.id}`}
+                  className="block rounded-2xl border border-white/10 bg-white/[0.03] p-4 transition hover:border-violet-400/40 hover:bg-violet-500/[0.06]"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-white/40">
+                        {a.subject_name ?? "—"} <span className="text-white/20">·</span>{" "}
+                        {a.topic_name ?? "—"} <span className="text-white/20">·</span>{" "}
+                        {a.teacher_name} ustoz
+                      </p>
+                      <p className="mt-0.5 font-semibold text-white">{a.title}</p>
+                      {dl && <p className="mt-0.5 text-xs text-white/40">Muddat: {dl}</p>}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <StatusBadge status={status} />
+                      <span className="chip border-violet-400/30 bg-violet-500/10 text-violet-200">
+                        <ActionIcon className="h-3.5 w-3.5" />
+                        {action}
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </span>
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Oxirgi natija */}
         {latestReport && (
           <div className="card mt-5 p-7">
@@ -157,35 +306,6 @@ export default async function StudentDashboard() {
                   {latestReport.feedback}
                 </p>
               </div>
-            </div>
-          </div>
-        )}
-
-        {/* Boshqa topshiriqlar */}
-        {assignments.length > 1 && (
-          <div className="mt-5">
-            <p className="mb-3 text-sm font-semibold uppercase tracking-wider text-white/40">
-              Boshqa topshiriqlar
-            </p>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {assignments.slice(1).map((a) => {
-                const s = sessionByAssignment.get(a.id);
-                return (
-                  <Link
-                    key={a.id}
-                    href={`/student/assignment?assignmentId=${a.id}`}
-                    className="card group flex items-center justify-between p-5 transition hover:border-white/20"
-                  >
-                    <div>
-                      <p className="font-semibold text-white group-hover:text-violet-200">{a.title}</p>
-                      <p className="mt-1 text-xs text-white/40">
-                        {s?.status === "completed" ? `Yakunlangan · ${Math.round(s.mastery)}%` : s ? "Davom etmoqda" : "Boshlanmagan"}
-                      </p>
-                    </div>
-                    <Play className="h-4 w-4 text-white/30 transition group-hover:text-violet-300" />
-                  </Link>
-                );
-              })}
             </div>
           </div>
         )}

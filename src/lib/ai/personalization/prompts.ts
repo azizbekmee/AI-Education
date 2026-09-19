@@ -28,6 +28,8 @@ FAOLIYAT PRIMITIVLARI (har bir qadam aynan shu 4 ta ko'rinishdan biri bo'lishi S
 3. kind:"ordering" — bosqichlarni tartiblash. items (3-5 ta) + correctOrder (xuddi shu elementlarning to'g'ri tartibi) + solution.
 4. kind:"free_response" — erkin javob/tushuntirish/loyiha chizish (qisqa matn). solution (ideal javob tavsifi).
 
+ORIGINAL SAVOLLAR QOIDASI: agar topshiriq matnida "ORIGINAL SAVOLLAR" bloki bo'lsa — tajriba qadamlari AYNAN shu savollarni (so'zma-so'z) o'z ichiga olishi SHART. O'zing yangi akademik savol ixtiro qilma va original savollarni almashtirma. Sen faqat: taqdimot usulini, ssenariy kontekstini, interaction formatini, hint va QO'SHIMCHA MASHQLARNI (x+2=3 kabi o'xshash sodda misollar, "Qo'shimcha mashq" sifatida) o'zgartirishing mumkin. Original savolga qaytish — har bir qadamning yakuniy maqsadi.
+
 STRICT JSON qaytar. Markdown va izohlar taqiqlanadi.
 ${LANGUAGE_RULE}`;
 
@@ -38,12 +40,16 @@ export function designerUserPrompt(input: {
   interests: string[];
   learningStyle: string;
   todayInterest: string;
+  workMode?: string;
   previousMastery: number | null;
   previousWeaknesses: string[];
 }): string {
   return `O'qituvchi topshirig'i:
 Sarlavha: ${input.assignmentTitle}
 Mazmun: ${input.assignmentContent}
+
+O'quvchi tanlagan ISH FORMATI: ${input.workMode ? input.workMode : "o'quvchi tanlamadi — erkin tanla"}
+${input.workMode ? "Qadamlarni shu format his qiladigan qilib loyihala (lekin asl savollar o'zgarmasdan qoladi)." : ""}
 
 O'quvchi:
 Ism: ${input.name}

@@ -15,7 +15,7 @@ export async function POST(req: Request) {
   }
 
   const body = (await req.json().catch(() => null)) as
-    | { assignmentId?: number; todayInterest?: string }
+    | { assignmentId?: number; todayInterest?: string; mood?: string; workMode?: string }
     | null;
   const assignmentId = Number(body?.assignmentId);
   if (!Number.isInteger(assignmentId)) {
@@ -69,6 +69,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ needsInterest: true, profile });
   }
   const todayInterest = (body.todayInterest ?? "").trim();
+  const mood = (body.mood ?? "").trim().slice(0, 40);
+  const workMode = (body.workMode ?? "").trim().slice(0, 20);
 
   // Previous performance feeds the personalization engine
   const prevReport = db
@@ -77,11 +79,41 @@ export async function POST(req: Request) {
   const previousMastery = prevReport ? Math.round(prevReport.mastery) : null;
   const previousWeaknesses = prevReport ? parseJsonArray(prevReport.weaknesses, [] as string[]) : [];
 
+  // The teacher's original assignment is the immutable source of truth — the designed
+  // experience must build on exactly these questions, never invent replacements.
+  let originalBlock = "";
+  if (assignment.original) {
+    try {
+      const orig = JSON.parse(assignment.original) as {
+        requirements?: string[];
+        questions?: { text: string }[];
+        instruction?: string;
+      };
+      const lines: string[] = [];
+      if (orig.questions?.length) {
+        lines.push(
+          "ORIGINAL SAVOLLAR (source of truth — o'quvchi AYNAN shu savollarni bajarishi shart, boshqa savol ixtiro qilma):",
+          ...orig.questions.map((q, i) => `${i + 1}. ${q.text}`)
+        );
+      }
+      if (orig.requirements?.length) {
+        lines.push("ORIGINAL TALABLAR:", ...orig.requirements.map((r) => `- ${r}`));
+      }
+      if (orig.instruction) {
+        lines.push(`O'QITUVCHI KO'RSATMASI: ${orig.instruction}`);
+      }
+      if (lines.length) originalBlock = `\n\n${lines.join("\n")}\n`;
+    } catch {
+      /* legacy row — ignore */
+    }
+  }
+
   const { experience: designed, source } = await designExperience({
     profile,
     assignmentTitle: assignment.title,
-    assignmentContent: assignment.content,
+    assignmentContent: assignment.content + originalBlock,
     todayInterest,
+    workMode,
     previousMastery,
     previousWeaknesses,
   });
@@ -109,9 +141,9 @@ export async function POST(req: Request) {
 
   const sessionId = db
     .prepare(
-      "INSERT INTO sessions (assignment_id, student_id, questions, results, today_interest) VALUES (?, ?, ?, ?, ?)"
+      "INSERT INTO sessions (assignment_id, student_id, questions, results, today_interest, mood, work_mode) VALUES (?, ?, ?, ?, ?, ?, ?)"
     )
-    .run(assignmentId, user.id, JSON.stringify([experience]), JSON.stringify(results), todayInterest)
+    .run(assignmentId, user.id, JSON.stringify([experience]), JSON.stringify(results), todayInterest, mood, workMode)
     .lastInsertRowid as number;
 
   return NextResponse.json({

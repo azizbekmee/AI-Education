@@ -44,8 +44,8 @@ export default function LoginPage() {
   }
 
   function fillDemo(kind: "teacher" | "student") {
-    setEmail(kind === "teacher" ? "teacher@demo.com" : "student@demo.com");
-    setPassword(kind === "teacher" ? "teacher123" : "student123");
+    setEmail(kind === "teacher" ? "teacher.math@edumind.demo" : "student.6a@edumind.demo");
+    setPassword("Demo123!");
     setError("");
   }
 
@@ -185,7 +185,7 @@ export default function LoginPage() {
                 <GraduationCap className="h-5 w-5 shrink-0 text-violet-300" />
                 <span>
                   <span className="block text-sm font-semibold text-white">O&apos;qituvchi</span>
-                  <span className="block text-xs text-white/40">teacher@demo.com</span>
+                  <span className="block text-xs text-white/40">teacher.math@edumind.demo</span>
                 </span>
               </button>
               <button
@@ -196,7 +196,7 @@ export default function LoginPage() {
                 <UserRound className="h-5 w-5 shrink-0 text-cyan-300" />
                 <span>
                   <span className="block text-sm font-semibold text-white">O&apos;quvchi</span>
-                  <span className="block text-xs text-white/40">student@demo.com</span>
+                  <span className="block text-xs text-white/40">student.6a@edumind.demo</span>
                 </span>
               </button>
             </div>

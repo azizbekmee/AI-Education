@@ -19,6 +19,7 @@ export interface DesignInput {
   assignmentTitle: string;
   assignmentContent: string;
   todayInterest: string;
+  workMode?: string;
   previousMastery: number | null;
   previousWeaknesses: string[];
 }
@@ -119,6 +120,7 @@ export async function designExperience(input: DesignInput): Promise<{ experience
         interests: input.profile.interests,
         learningStyle: input.profile.learningStyle,
         todayInterest: input.todayInterest,
+        workMode: input.workMode,
         previousMastery: input.previousMastery,
         previousWeaknesses: input.previousWeaknesses,
       }),

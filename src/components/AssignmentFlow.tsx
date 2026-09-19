@@ -13,11 +13,13 @@ import {
   ArrowLeft,
   BrainCircuit,
   Wand2,
+  Save,
 } from "lucide-react";
 import Backdrop from "@/components/Backdrop";
 import Header from "@/components/Header";
 import MasteryRing from "@/components/MasteryRing";
 import ActivityInput from "@/components/activities/ActivityInput";
+import { MOODS, WORK_MODES } from "@/types";
 import type {
   AnswerPayload,
   ReportData,
@@ -62,10 +64,12 @@ export default function AssignmentFlow({
   profile: StudentProfile;
 }) {
   const router = useRouter();
-  const [phase, setPhase] = useState<"loading" | "interest" | "intro" | "chat" | "finish">("loading");
+  const [phase, setPhase] = useState<"loading" | "interest" | "mood" | "mode" | "intro" | "chat" | "finish">("loading");
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [experience, setExperience] = useState<SafeExperience | null>(null);
   const [todayInterest, setTodayInterest] = useState("");
+  const [pendingInterest, setPendingInterest] = useState("");
+  const [mood, setMood] = useState("");
   const [messages, setMessages] = useState<Msg[]>([]);
   const [activity, setActivity] = useState<SafeActivity | null>(null);
   const [activityIndex, setActivityIndex] = useState(0);
@@ -136,13 +140,23 @@ export default function AssignmentFlow({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assignmentId]);
 
-  async function beginWithInterest(interest: string) {
+  function chooseInterest(interest: string) {
+    setPendingInterest(interest);
+    setPhase("mood");
+  }
+
+  function chooseMood(m: string) {
+    setMood(m);
+    setPhase("mode");
+  }
+
+  async function beginWithInterest(interest: string, moodId: string, workMode: string) {
     setPhase("loading");
     try {
       const res = await fetch("/api/assignments/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ assignmentId, todayInterest: interest }),
+        body: JSON.stringify({ assignmentId, todayInterest: interest, mood: moodId, workMode }),
       });
       const data = (await res.json()) as StartResponse;
       if (!res.ok || !hydrate(data)) {
@@ -307,7 +321,7 @@ export default function AssignmentFlow({
                   key={i}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  onClick={() => beginWithInterest(i)}
+                  onClick={() => chooseInterest(i)}
                   className="chip border-white/10 bg-white/[0.04] px-4 py-2.5 text-white/80 transition hover:border-violet-400/40 hover:bg-violet-500/10 hover:text-white"
                 >
                   {i}
@@ -323,13 +337,13 @@ export default function AssignmentFlow({
                 <input
                   value={customInterest}
                   onChange={(e) => setCustomInterest(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && customInterest.trim() && beginWithInterest(customInterest.trim())}
+                  onKeyDown={(e) => e.key === "Enter" && customInterest.trim() && chooseInterest(customInterest.trim())}
                   placeholder="Masalan: Men kosmosga qiziqaman..."
                   className="input-field flex-1"
                 />
                 <motion.button
                   whileTap={{ scale: 0.97 }}
-                  onClick={() => customInterest.trim() && beginWithInterest(customInterest.trim())}
+                  onClick={() => customInterest.trim() && chooseInterest(customInterest.trim())}
                   disabled={!customInterest.trim()}
                   className="btn-gradient shrink-0 px-4 py-3"
                 >
@@ -337,7 +351,7 @@ export default function AssignmentFlow({
                 </motion.button>
               </div>
               <button
-                onClick={() => beginWithInterest("")}
+                onClick={() => chooseInterest("")}
                 className="mt-4 text-sm text-white/40 transition hover:text-white/70"
               >
                 Bugun farqi yo&apos;q — AI eng mosini tanlasin
@@ -350,6 +364,99 @@ export default function AssignmentFlow({
             >
               <ArrowLeft className="h-4 w-4" />
               Dashboardga qaytish
+            </button>
+          </motion.div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ---- Step 1: mood ---- */
+  if (phase === "mood") {
+    return (
+      <div className="relative flex min-h-screen flex-col">
+        <Backdrop />
+        <Header name={name} role="student" />
+        <div className="relative z-10 mx-auto flex w-full max-w-xl flex-1 flex-col justify-center px-6 pb-16">
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <h1 className="font-display text-2xl font-bold text-white sm:text-3xl">
+              Bugun kayfiyating qanday, {name.split(" ")[0]}?
+            </h1>
+            <p className="mt-3 text-lg text-white/70">
+              AI tajribani kayfiyatingga qarab moslashtiradi.
+            </p>
+            <div className="mt-6 grid gap-2.5">
+              {MOODS.map((m) => (
+                <motion.button
+                  key={m.id}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => chooseMood(m.id)}
+                  className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4 text-left transition hover:border-violet-400/40 hover:bg-violet-500/10"
+                >
+                  <span className="text-2xl">{m.emoji}</span>
+                  <span className="font-medium text-white/80">{m.label}</span>
+                </motion.button>
+              ))}
+            </div>
+            <button
+              onClick={() => router.push("/student/dashboard")}
+              className="mt-8 flex items-center justify-center gap-1.5 text-sm text-white/40 transition hover:text-white/70"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Saqlash va chiqish
+            </button>
+          </motion.div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ---- Step 2: work mode ---- */
+  if (phase === "mode") {
+    return (
+      <div className="relative flex min-h-screen flex-col">
+        <Backdrop />
+        <Header name={name} role="student" />
+        <div className="relative z-10 mx-auto flex w-full max-w-xl flex-1 flex-col justify-center px-6 pb-16">
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <h1 className="font-display text-2xl font-bold text-white sm:text-3xl">
+              Qaysi formatda ishlaysan?
+            </h1>
+            <p className="mt-3 text-lg text-white/70">
+              O&apos;qituvchi topshirig&apos;idagi savollar shu formatda taqdim etiladi — savollar o&apos;zi o&apos;zgarmaydi.
+            </p>
+            <div className="mt-6 grid gap-2.5">
+              {WORK_MODES.map((m) => (
+                <motion.button
+                  key={m.id}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => beginWithInterest(pendingInterest, mood, m.id)}
+                  className="flex items-center gap-4 rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4 text-left transition hover:border-violet-400/40 hover:bg-violet-500/10"
+                >
+                  <span className="text-3xl">{m.icon}</span>
+                  <span>
+                    <span className="block font-semibold text-white">{m.label}</span>
+                    <span className="mt-0.5 block text-sm text-white/50">{m.desc}</span>
+                  </span>
+                </motion.button>
+              ))}
+            </div>
+            <button
+              onClick={() => router.push("/student/dashboard")}
+              className="mt-8 flex items-center justify-center gap-1.5 text-sm text-white/40 transition hover:text-white/70"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Saqlash va chiqish
             </button>
           </motion.div>
         </div>
@@ -534,29 +641,50 @@ export default function AssignmentFlow({
       <Header name={name} role="student" />
 
       <div className="relative z-10 mx-auto w-full max-w-2xl px-6">
-        <div className="card flex items-center justify-between gap-4 px-6 py-4">
-          <div>
-            <p className="font-display text-lg font-bold text-white">
-              {Math.min(doneCount + 1, experience?.activities.length ?? 5)} / {experience?.activities.length ?? 5}-qadam
-            </p>
-            <div className="mt-1.5 h-1.5 w-40 overflow-hidden rounded-full bg-white/10">
-              <motion.div
-                className="h-full rounded-full bg-gradient-to-r from-violet-500 to-cyan-400"
-                animate={{ width: `${(doneCount / (experience?.activities.length ?? 5)) * 100}%` }}
-                transition={{ duration: 0.6, ease: "easeOut" }}
-              />
+        <div className="card px-6 py-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="font-display text-lg font-bold text-white">
+                {Math.min(doneCount + 1, experience?.activities.length ?? 5)} / {experience?.activities.length ?? 5}-qadam
+              </p>
+              {/* O'quv yo'li: har bir qadam — joriy/bajarilgan/kutilmoqda */}
+              <div className="mt-2 flex items-center gap-1.5">
+                {(experience?.activities ?? []).map((a, i) => (
+                  <span
+                    key={a.id}
+                    title={a.concept}
+                    className={`h-2 w-6 rounded-full ${
+                      i < doneCount
+                        ? "bg-emerald-400"
+                        : i === doneCount
+                          ? "bg-gradient-to-r from-violet-500 to-cyan-400"
+                          : "bg-white/15"
+                    }`}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
-          <div className="text-right">
-            <p className="text-xs uppercase tracking-wider text-white/40">O&apos;zlashtirish</p>
-            <motion.p
-              key={mastery}
-              initial={{ scale: 1.3, color: "#22d3ee" }}
-              animate={{ scale: 1, color: "#ffffff" }}
-              className="font-display text-2xl font-bold"
-            >
-              {mastery}%
-            </motion.p>
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <p className="text-xs uppercase tracking-wider text-white/40">O&apos;zlashtirish</p>
+                <motion.p
+                  key={mastery}
+                  initial={{ scale: 1.3, color: "#22d3ee" }}
+                  animate={{ scale: 1, color: "#ffffff" }}
+                  className="font-display text-2xl font-bold"
+                >
+                  {mastery}%
+                </motion.p>
+              </div>
+              <button
+                onClick={() => router.push("/student/dashboard")}
+                title="Davolini keyinroq aynan shu yerda boshlaysan"
+                className="flex shrink-0 items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-white/60 transition hover:border-amber-400/40 hover:text-amber-200"
+              >
+                <Save className="h-3.5 w-3.5" />
+                Saqlash va chiqish
+              </button>
+            </div>
           </div>
         </div>
       </div>

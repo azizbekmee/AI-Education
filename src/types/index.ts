@@ -27,6 +27,15 @@ export interface OriginalAssignment {
   constraints: string;
   /** Full extracted text of all files, kept verbatim */
   rawText: string;
+  /* AI-extraction metadata (absent on legacy rows) */
+  /** true when questions were extracted from the uploaded files by AI */
+  extractedByAi?: boolean;
+  /** word count of the source files, as counted during extraction */
+  wordCount?: number;
+  /** what the student is expected to produce / hand in */
+  expectedOutput?: string;
+  /** teacher's instruction, verbatim (note field + any instruction found in files) */
+  instruction?: string;
 }
 
 export interface AssignmentFileMeta {
